@@ -1,0 +1,1009 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NOKIA Snake — Booth Edition</title>
+<style>
+  :root{
+    --hud-fg:#0B1B3A;
+    --accent:#005AFF;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    background:#F4F6FB;
+    font-family:"Segoe UI",system-ui,-apple-system,sans-serif;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    overflow:hidden;transition:background .8s linear;
+    user-select:none;-webkit-user-select:none;
+  }
+  #hud{
+    width:min(96vw,1100px);
+    display:flex;align-items:center;justify-content:space-between;
+    padding:10px 18px;margin-bottom:10px;
+    color:var(--hud-fg);
+    font-weight:600;letter-spacing:.06em;
+    transition:color .8s linear;
+  }
+  #hud .box{display:flex;align-items:baseline;gap:10px}
+  #hud .lbl{font-size:11px;opacity:.55;text-transform:uppercase;letter-spacing:.18em}
+  #hud .val{font-size:22px;font-variant-numeric:tabular-nums}
+  #seq{display:flex;gap:6px;align-items:center}
+  #seq span{
+    display:inline-block;width:26px;height:26px;line-height:26px;text-align:center;
+    border-radius:6px;font-size:14px;font-weight:800;
+    border:2px solid transparent;opacity:.28;transition:all .25s;
+  }
+  #seq span.next{opacity:1;border-color:var(--accent);transform:scale(1.15);
+    box-shadow:0 0 12px color-mix(in srgb,var(--accent) 60%, transparent)}
+  #seq span.done{opacity:.75}
+  #lives{letter-spacing:4px;font-size:18px}
+  #stage{position:relative;line-height:0}
+  canvas#game{
+    border-radius:12px;
+    max-width:96vw;max-height:74vh;
+    image-rendering:auto;
+    transition:box-shadow .12s linear;
+  }
+  #scanlines{
+    position:absolute;inset:0;border-radius:12px;pointer-events:none;opacity:0;
+    background:repeating-linear-gradient(0deg,rgba(0,0,0,.22) 0 1px,transparent 1px 3px);
+    mix-blend-mode:multiply;
+  }
+  .overlay{
+    position:absolute;inset:0;display:none;flex-direction:column;
+    align-items:center;justify-content:center;gap:14px;border-radius:12px;
+    background:rgba(6,2,18,.82);backdrop-filter:blur(4px);
+    color:#EAF0FF;text-align:center;z-index:5;
+  }
+  .overlay.show{display:flex}
+  .overlay h1{font-size:15px;letter-spacing:.35em;font-weight:700;opacity:.7;text-transform:uppercase}
+  .overlay .big{font-size:44px;font-weight:800;letter-spacing:.05em}
+  .overlay .score{font-size:26px;font-variant-numeric:tabular-nums}
+  .overlay .hint{font-size:13px;opacity:.65;letter-spacing:.12em;margin-top:8px}
+  .overlay .hint b{color:#7CF7FF}
+  #titleCanvas{margin-bottom:6px}
+  .pulseText{animation:pt 1.2s ease-in-out infinite}
+  @keyframes pt{0%,100%{opacity:.65}50%{opacity:1}}
+  @media (prefers-reduced-motion: reduce){ .pulseText{animation:none} }
+  #controlsHint{margin-top:8px;font-size:12px;opacity:.55;letter-spacing:.08em;color:var(--hud-fg);transition:color .8s linear}
+</style>
+</head>
+<body>
+  <div id="hud">
+    <div class="box"><span class="lbl">Score</span><span class="val" id="scoreV">0</span></div>
+    <div class="box"><span class="lbl">Level</span><span class="val" id="levelV">1</span></div>
+    <div id="seq"></div>
+    <div class="box"><span class="lbl">Letters</span><span class="val" id="lettersV">0/15</span></div>
+    <div class="box"><span class="lbl">Lives</span><span class="val" id="lives">●●●</span></div>
+  </div>
+
+  <div id="stage">
+    <canvas id="game"></canvas>
+    <div id="scanlines"></div>
+    <div class="overlay" id="overlay"></div>
+  </div>
+  <div id="controlsHint">D-PAD move · ① start / confirm · ② pause · ③ mute &nbsp;|&nbsp; keys: arrows / WASD · Enter · P · M</div>
+
+<script>
+"use strict";
+/* ============================================================
+   NOKIA SNAKE — booth engagement build
+   Levels 1–20 · progressive synthwave · 3-button USB pad + d-pad
+   ============================================================ */
+
+const SEQ = ["N","O","K","I","A"];
+const LETTERS_PER_LEVEL = 15;
+const MAX_LEVEL = 20;
+const CELL = 30;                 // logical px per grid cell
+const DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+const cv  = document.getElementById("game");
+const ctx = cv.getContext("2d");
+const stage = document.getElementById("stage");
+const overlay = document.getElementById("overlay");
+const scanEl = document.getElementById("scanlines");
+
+/* ---------- color helpers & evolving palette ---------- */
+function hex2rgb(h){h=h.replace("#","");return [parseInt(h.slice(0,2),16),parseInt(h.slice(2,4),16),parseInt(h.slice(4,6),16)];}
+function mix(a,b,t){
+  const A=hex2rgb(a),B=hex2rgb(b);
+  const c=A.map((v,i)=>Math.round(v+(B[i]-v)*t));
+  return `rgb(${c[0]},${c[1]},${c[2]})`;
+}
+function mixA(a,b,t,alpha){
+  const A=hex2rgb(a),B=hex2rgb(b);
+  const c=A.map((v,i)=>Math.round(v+(B[i]-v)*t));
+  return `rgba(${c[0]},${c[1]},${c[2]},${alpha})`;
+}
+
+/* Level 1 = clean Nokia brand (white field, Nokia blue).
+   Level 20 = full synthwave (near-black violet, neon cyan/magenta).
+   t moves in 19 discrete, subtle steps. */
+function palette(level){
+  const t=(level-1)/(MAX_LEVEL-1);
+  return {
+    t,
+    bg      : mix ("#F4F6FB","#0A0116",t),
+    gridCol : mixA("#0B1B3A","#8A2BE2",t, 0.06+0.30*t),
+    snake   : mix ("#005AFF","#00F0FF",t),
+    snakeHd : mix ("#0041C4","#7CF7FF",t),
+    letter  : mix ("#0B1B3A","#FF2BD6",t),
+    wall    : mix ("#8E9BB5","#9B30FF",t),
+    wallEdge: mix ("#5B6B8C","#FF2BD6",t),
+    voidCol : mix ("#0B1B3A","#03000A",t),
+    hudFg   : mix ("#0B1B3A","#D8E8FF",t),
+    accent  : mix ("#005AFF","#FF2BD6",t),
+    popup   : mix ("#0B1B3A","#7CF7FF",t),
+    npc     : ["#FF6B35","#FFC93F","#3DFA7E"].map(c=>mix(c, c, 0)), // stay warm/contrast
+    glow    : t                                   // 0 → 1 neon intensity
+  };
+}
+
+/* ---------- NOKIA (2023 "Pure") letterforms ----------
+   Minimal geometric strokes echoing the current logo:
+   detached diagonals, no crossbar on the A. Drawn as paths
+   inside a unit box then scaled — crisp at any cell size.  */
+function glyphPath(c, ch){
+  c.lineCap="butt"; c.lineJoin="miter";
+  c.beginPath();
+  switch(ch){
+    case "N":
+      c.moveTo(-0.30,-0.40); c.lineTo(-0.30, 0.40);
+      c.moveTo( 0.30,-0.40); c.lineTo( 0.30, 0.40);
+      c.moveTo(-0.17,-0.22); c.lineTo( 0.17, 0.22);   // detached mid-diagonal
+      break;
+    case "O":{
+      const w=0.62,h=0.80,r=0.30;
+      c.moveTo(-w/2+r,-h/2);
+      c.lineTo( w/2-r,-h/2); c.arcTo( w/2,-h/2, w/2,-h/2+r, r);
+      c.lineTo( w/2, h/2-r); c.arcTo( w/2, h/2, w/2-r, h/2, r);
+      c.lineTo(-w/2+r, h/2); c.arcTo(-w/2, h/2,-w/2, h/2-r, r);
+      c.lineTo(-w/2,-h/2+r); c.arcTo(-w/2,-h/2,-w/2+r,-h/2, r);
+      break;}
+    case "K":
+      c.moveTo(-0.28,-0.40); c.lineTo(-0.28, 0.40);
+      c.moveTo(-0.06, 0.00); c.lineTo( 0.30,-0.40);   // detached arms
+      c.moveTo(-0.06, 0.00); c.lineTo( 0.30, 0.40);
+      break;
+    case "I":
+      c.moveTo(0,-0.40); c.lineTo(0,0.40);
+      break;
+    case "A":
+      c.moveTo(-0.28, 0.40); c.lineTo(0,-0.40);       // no crossbar
+      c.lineTo( 0.28, 0.40);
+      break;
+  }
+}
+function drawGlyph(c, ch, cx, cy, size, color, glowAmt){
+  c.save();
+  c.translate(cx,cy); c.scale(size,size);
+  c.strokeStyle=color;
+  c.lineWidth=0.15;
+  if(glowAmt>0.02){ c.shadowColor=color; c.shadowBlur=size*0.5*glowAmt/size*14; }
+  glyphPath(c, ch);
+  c.stroke();
+  c.restore();
+}
+
+/* ============================================================
+   AUDIO — layered synthwave that assembles level by level
+   L1 silence · L2 kick · L4 bass · L6 hats · L8 arpeggio
+   L11 pads · L14 16th arps · L17 snare + lead
+   ============================================================ */
+const Music = {
+  ac:null, master:null, muted:false, level:1,
+  step:0, nextT:0, timer:null, noiseBuf:null,
+  onBeat:null,
+
+  ensure(){
+    if(this.ac || this.unavailable) return;
+    const AC = window.AudioContext||window.webkitAudioContext;
+    if(!AC){ this.unavailable=true; return; }
+    this.ac = new AC();
+    this.master = this.ac.createGain();
+    this.master.gain.value = 0.45;
+    this.master.connect(this.ac.destination);
+    const len = this.ac.sampleRate*0.5;
+    this.noiseBuf = this.ac.createBuffer(1,len,this.ac.sampleRate);
+    const d=this.noiseBuf.getChannelData(0);
+    for(let i=0;i<len;i++) d[i]=Math.random()*2-1;
+  },
+  start(){
+    this.ensure();
+    if(!this.ac) return;
+    if(this.ac.state==="suspended") this.ac.resume();
+    if(this.timer) return;
+    this.step=0; this.nextT=this.ac.currentTime+0.06;
+    this.timer=setInterval(()=>this.pump(),25);
+  },
+  stop(){ if(this.timer){clearInterval(this.timer);this.timer=null;} },
+  setMuted(m){ this.muted=m; if(this.master) this.master.gain.value = m?0:0.45; },
+  bpm(){ return 96 + this.level*2; },
+  pump(){
+    const spb = 60/this.bpm()/4;             // 16th note
+    while(this.nextT < this.ac.currentTime + 0.12){
+      this.schedule(this.step, this.nextT);
+      this.nextT += spb;
+      this.step = (this.step+1) % 64;        // 4 bars of 16
+    }
+  },
+  schedule(s, t){
+    const L=this.level, bar=Math.floor(s/16), sub=s%16;
+    // Am · F · C · G  — classic synthwave loop
+    const roots=[33,29,36,31], root=roots[bar];
+    const chord=[root+24, root+27, root+31, root+36];   // m/maj-ish triad + oct
+
+    if(sub%4===0 && this.onBeat) this.onBeat();          // visual pulse (even muted)
+    if(this.muted) return;
+
+    if(L>=2 && sub%4===0) this.kick(t);
+    if(L>=6){
+      if(L>=14){ if(sub%2===1) this.hat(t,0.05); }
+      else if(sub%4===2) this.hat(t,0.08);
+    }
+    if(L>=17 && (sub===4||sub===12)) this.snare(t);
+    if(L>=4 && sub%2===0){
+      const n = (sub%8===6)? root+12 : root;
+      this.bass(t, n);
+    }
+    if(L>=8){
+      const div = (L>=14)?1:2;                            // 16ths at 14+
+      if(sub%div===0){
+        const idx=(Math.floor(s/div))%chord.length;
+        this.arp(t, chord[idx] + (L>=14 && bar%2 ? 12: 0));
+      }
+    }
+    if(L>=11 && sub===0) this.pad(t, chord);
+    if(L>=17 && sub===0 && bar%2===0) this.lead(t, root+36);
+  },
+  mtof(m){ return 440*Math.pow(2,(m-69)/12); },
+  env(g,t,a,peak,dec){
+    g.gain.setValueAtTime(0.0001,t);
+    g.gain.linearRampToValueAtTime(peak,t+a);
+    g.gain.exponentialRampToValueAtTime(0.0001,t+a+dec);
+  },
+  kick(t){
+    const o=this.ac.createOscillator(), g=this.ac.createGain();
+    o.type="sine";
+    o.frequency.setValueAtTime(150,t);
+    o.frequency.exponentialRampToValueAtTime(42,t+0.12);
+    this.env(g,t,0.002,0.9,0.22);
+    o.connect(g).connect(this.master); o.start(t); o.stop(t+0.3);
+  },
+  hat(t,vol){
+    const s=this.ac.createBufferSource(); s.buffer=this.noiseBuf;
+    const f=this.ac.createBiquadFilter(); f.type="highpass"; f.frequency.value=7000;
+    const g=this.ac.createGain(); this.env(g,t,0.001,vol,0.05);
+    s.connect(f).connect(g).connect(this.master); s.start(t); s.stop(t+0.08);
+  },
+  snare(t){
+    const s=this.ac.createBufferSource(); s.buffer=this.noiseBuf;
+    const f=this.ac.createBiquadFilter(); f.type="bandpass"; f.frequency.value=1900; f.Q.value=0.8;
+    const g=this.ac.createGain(); this.env(g,t,0.001,0.35,0.16);
+    s.connect(f).connect(g).connect(this.master); s.start(t); s.stop(t+0.2);
+  },
+  bass(t,m){
+    const o=this.ac.createOscillator(); o.type="sawtooth"; o.frequency.value=this.mtof(m);
+    const f=this.ac.createBiquadFilter(); f.type="lowpass";
+    f.frequency.setValueAtTime(300+this.level*35,t);
+    f.frequency.exponentialRampToValueAtTime(120,t+0.16);
+    const g=this.ac.createGain(); this.env(g,t,0.004,0.30,0.15);
+    o.connect(f).connect(g).connect(this.master); o.start(t); o.stop(t+0.22);
+  },
+  arp(t,m){
+    const o=this.ac.createOscillator(); o.type="square"; o.frequency.value=this.mtof(m);
+    const f=this.ac.createBiquadFilter(); f.type="lowpass"; f.frequency.value=2600;
+    const g=this.ac.createGain(); this.env(g,t,0.002,0.10,0.10);
+    o.connect(f).connect(g).connect(this.master); o.start(t); o.stop(t+0.14);
+  },
+  pad(t,chord){
+    const spb=60/this.bpm()/4, dur=spb*16;
+    chord.slice(0,3).forEach((m,i)=>{
+      const o=this.ac.createOscillator(); o.type="sawtooth";
+      o.frequency.value=this.mtof(m-12); o.detune.value=(i-1)*7;
+      const f=this.ac.createBiquadFilter(); f.type="lowpass"; f.frequency.value=850;
+      const g=this.ac.createGain();
+      g.gain.setValueAtTime(0.0001,t);
+      g.gain.linearRampToValueAtTime(0.05,t+dur*0.3);
+      g.gain.linearRampToValueAtTime(0.0001,t+dur);
+      o.connect(f).connect(g).connect(this.master); o.start(t); o.stop(t+dur+0.05);
+    });
+  },
+  lead(t,m){
+    const spb=60/this.bpm()/4;
+    const phrase=[0,3,7,10,7,3];
+    phrase.forEach((iv,i)=>{
+      const tt=t+i*spb*2;
+      const o=this.ac.createOscillator(); o.type="triangle"; o.frequency.value=this.mtof(m+iv);
+      const g=this.ac.createGain(); this.env(g,tt,0.01,0.12,spb*1.8);
+      o.connect(g).connect(this.master); o.start(tt); o.stop(tt+spb*2);
+    });
+  },
+  // small one-shot SFX (share the context)
+  sfx(kind){
+    if(!this.ac||this.muted) return;
+    const t=this.ac.currentTime;
+    if(kind==="eat"){
+      const o=this.ac.createOscillator(),g=this.ac.createGain();
+      o.type="triangle"; o.frequency.setValueAtTime(620,t);
+      o.frequency.exponentialRampToValueAtTime(980,t+0.07);
+      this.env(g,t,0.002,0.25,0.10);
+      o.connect(g).connect(this.master); o.start(t); o.stop(t+0.14);
+    }else if(kind==="bonus"){
+      [880,1174,1568].forEach((f,i)=>{
+        const o=this.ac.createOscillator(),g=this.ac.createGain();
+        o.type="square"; o.frequency.value=f;
+        this.env(g,t+i*0.05,0.002,0.12,0.12);
+        o.connect(g).connect(this.master); o.start(t+i*0.05); o.stop(t+i*0.05+0.16);
+      });
+    }else if(kind==="die"){
+      const o=this.ac.createOscillator(),g=this.ac.createGain();
+      o.type="sawtooth"; o.frequency.setValueAtTime(300,t);
+      o.frequency.exponentialRampToValueAtTime(60,t+0.4);
+      this.env(g,t,0.002,0.3,0.42);
+      o.connect(g).connect(this.master); o.start(t); o.stop(t+0.5);
+    }else if(kind==="kill"){
+      const o=this.ac.createOscillator(),g=this.ac.createGain();
+      o.type="square"; o.frequency.setValueAtTime(220,t);
+      o.frequency.exponentialRampToValueAtTime(880,t+0.12);
+      this.env(g,t,0.002,0.22,0.18);
+      o.connect(g).connect(this.master); o.start(t); o.stop(t+0.22);
+    }
+  }
+};
+
+/* ============================================================
+   GAME STATE
+   ============================================================ */
+const G = {
+  state:"menu",            // menu | play | paused | dying | retract | wipeout | popup | wipein | gameover | win
+  level:1, score:0, lives:3,
+  cols:15, rows:11, tickMs:160,
+  snake:[], dir:{x:1,y:0}, dirQ:[], grow:0,
+  walls:new Set(), reach:new Set(),
+  letterIdx:0, letter:null, lettersGot:0,
+  npcs:[],
+  popups:[], pulse:0, pulseScope:0,
+  lastTick:0, lastCloseCall:0, inNeedle:false,
+  wipe:{keys:null,maxKey:0,p:0,t0:0,dur:1400},
+  retractT:0, dieT:0, flashT:0,
+  levelStartScore:0,
+  muted:false
+};
+const key=(x,y)=>x+","+y;
+const DIRS=[{x:1,y:0},{x:-1,y:0},{x:0,y:1},{x:0,y:-1}];
+
+function levelConfig(n){
+  return {
+    cols: Math.min(15 + (n-1), 34),
+    rows: Math.min(11 + Math.floor((n-1)*0.7), 24),
+    tickMs: Math.max(78, 165 - (n-1)*4.5),
+    wallSegs: n>=3 ? Math.min(n-2, 10) : 0,
+    npcCount: n>=15?3 : n>=10?2 : n>=5?1 : 0
+  };
+}
+
+function resizeCanvas(){
+  cv.width  = G.cols*CELL*DPR;
+  cv.height = G.rows*CELL*DPR;
+  cv.style.aspectRatio = `${G.cols*CELL}/${G.rows*CELL}`;
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+}
+
+function floodReach(){
+  G.reach.clear();
+  const q=[G.snake[0]], seen=new Set([key(G.snake[0].x,G.snake[0].y)]);
+  while(q.length){
+    const c=q.pop();
+    G.reach.add(key(c.x,c.y));
+    for(const d of DIRS){
+      const nx=c.x+d.x, ny=c.y+d.y, k=key(nx,ny);
+      if(nx<0||ny<0||nx>=G.cols||ny>=G.rows) continue;
+      if(G.walls.has(k)||seen.has(k)) continue;
+      seen.add(k); q.push({x:nx,y:ny});
+    }
+  }
+}
+
+function genWalls(n){
+  G.walls.clear();
+  const cfg=levelConfig(n);
+  const hx=Math.floor(G.cols/2), hy=Math.floor(G.rows/2);
+  let placed=0, guard=0;
+  while(placed<cfg.wallSegs && guard++<400){
+    const horiz=Math.random()<0.5;
+    const len=3+Math.floor(Math.random()*4);
+    const x0=1+Math.floor(Math.random()*(G.cols-2-(horiz?len:0)));
+    const y0=1+Math.floor(Math.random()*(G.rows-2-(horiz?0:len)));
+    const cells=[];
+    let ok=true;
+    for(let i=0;i<len;i++){
+      const x=horiz?x0+i:x0, y=horiz?y0:y0+i;
+      if(Math.abs(x-hx)<4 && Math.abs(y-hy)<3){ ok=false; break; }
+      if(G.walls.has(key(x,y))){ ok=false; break; }
+      cells.push({x,y});
+    }
+    if(!ok) continue;
+    cells.forEach(c=>G.walls.add(key(c.x,c.y)));
+    placed++;
+  }
+  floodReach();
+  // ensure the arena didn't get badly split: need generous reachable space
+  if(G.reach.size < (G.cols*G.rows - G.walls.size)*0.85 && guard<400){ genWalls(n); }
+}
+
+function freeCell(minDistFromHead=2, avoidNpc=true){
+  const head=G.snake[0];
+  for(let tries=0;tries<600;tries++){
+    const x=Math.floor(Math.random()*G.cols), y=Math.floor(Math.random()*G.rows);
+    const k=key(x,y);
+    if(!G.reach.has(k)) continue;
+    if(G.walls.has(k)) continue;
+    if(G.snake.some(s=>s.x===x&&s.y===y)) continue;
+    if(avoidNpc && G.npcs.some(n=>n.alive&&n.cells.some(c=>c.x===x&&c.y===y))) continue;
+    if(Math.abs(x-head.x)+Math.abs(y-head.y) < minDistFromHead) continue;
+    return {x,y};
+  }
+  return {x:1,y:1};
+}
+
+function spawnLetter(){ G.letter = freeCell(3); }
+
+function makeNpc(i){
+  const p=freeCell(6);
+  return { cells:[{x:p.x,y:p.y}], dir:{...DIRS[Math.floor(Math.random()*4)]},
+           alive:true, respawnAt:0, colorIdx:i, blinkT:0 };
+}
+
+function buildLevel(n, freshSnake=true){
+  const cfg=levelConfig(n);
+  G.level=n; G.cols=cfg.cols; G.rows=cfg.rows; G.tickMs=cfg.tickMs;
+  Music.level=n;
+  resizeCanvas();
+  const cx=Math.floor(G.cols/2), cy=Math.floor(G.rows/2);
+  if(freshSnake){
+    G.snake=[{x:cx,y:cy},{x:cx-1,y:cy},{x:cx-2,y:cy}];
+    G.dir={x:1,y:0}; G.dirQ=[]; G.grow=0;
+  }
+  genWalls(n);
+  G.npcs=[]; for(let i=0;i<cfg.npcCount;i++) G.npcs.push(makeNpc(i));
+  G.letterIdx=0; G.lettersGot=0; spawnLetter();
+  G.popups=[]; G.inNeedle=false;
+  G.levelStartScore=G.score;
+  G.pulseScope = n>=15?3 : n>=10?2 : n>=5?1 : n>=2?0.5 : 0;
+  applyChrome();
+  updateHUD();
+}
+
+/* ---------- HUD / chrome ---------- */
+const scoreV=document.getElementById("scoreV"),
+      levelV=document.getElementById("levelV"),
+      lettersV=document.getElementById("lettersV"),
+      livesV=document.getElementById("lives"),
+      seqEl=document.getElementById("seq");
+
+function updateHUD(){
+  scoreV.textContent=G.score;
+  levelV.textContent=G.level;
+  lettersV.textContent=`${G.lettersGot}/${LETTERS_PER_LEVEL}`;
+  livesV.textContent="●".repeat(Math.max(0,G.lives));
+  seqEl.innerHTML="";
+  SEQ.forEach((ch,i)=>{
+    const s=document.createElement("span");
+    s.textContent=ch;
+    if(i===G.letterIdx) s.className="next";
+    else if(i<G.letterIdx) s.className="done";
+    seqEl.appendChild(s);
+  });
+}
+function applyChrome(){
+  const P=palette(G.level);
+  document.body.style.background=P.bg;
+  document.documentElement.style.setProperty("--hud-fg",P.hudFg);
+  document.documentElement.style.setProperty("--accent",P.accent);
+  scanEl.style.opacity = Math.max(0,(P.t-0.35))*0.5;
+}
+
+/* ---------- score & popups ---------- */
+function award(pts, label, gx, gy, sfx){
+  G.score+=pts;
+  const px = gx!=null ? (gx+0.5)*CELL : G.cols*CELL/2;
+  const py = gy!=null ? (gy-0.1)*CELL : G.rows*CELL/2;
+  G.popups.push({label, pts:"+"+pts, x:px, y:py, age:0});
+  if(sfx) Music.sfx(sfx);
+  updateHUD();
+}
+
+/* ---------- solidity checks ---------- */
+function outOfBounds(x,y){ return x<0||y<0||x>=G.cols||y>=G.rows; }
+function isSolidFor(x,y,{selfTail=true,npc=true}={}){
+  if(outOfBounds(x,y)) return "edge";
+  const k=key(x,y);
+  if(G.walls.has(k)) return "wall";
+  const lim=selfTail?G.snake.length:G.snake.length-1;
+  for(let i=0;i<lim;i++){ if(G.snake[i].x===x&&G.snake[i].y===y) return "self"; }
+  if(npc){ for(const n of G.npcs){ if(n.alive&&n.cells.some(c=>c.x===x&&c.y===y)) return "npc"; } }
+  return null;
+}
+
+/* ============================================================
+   TICK LOGIC — player, maneuvers, NPC AI
+   ============================================================ */
+function tick(){
+  // --- apply buffered turn + close-call detection ---
+  while(G.dirQ.length){
+    const nd=G.dirQ.shift();
+    if(nd.x===-G.dir.x&&nd.y===-G.dir.y) continue;
+    if(nd.x===G.dir.x&&nd.y===G.dir.y) continue;
+    const head=G.snake[0];
+    const aheadBlocked=isSolidFor(head.x+G.dir.x, head.y+G.dir.y);
+    G.dir=nd;
+    if(aheadBlocked && performance.now()-G.lastCloseCall>800){
+      G.lastCloseCall=performance.now();
+      const names={edge:"Wall dodge",wall:"Barrier dodge",self:"Tail dodge",npc:"Snake dodge"};
+      award(10+Math.floor(G.level/2), names[aheadBlocked]||"Close call", head.x, head.y, "bonus");
+    }
+    break;
+  }
+
+  const head=G.snake[0];
+  const nx=head.x+G.dir.x, ny=head.y+G.dir.y;
+  const hit=isSolidFor(nx,ny,{selfTail:G.grow>0});   // tail vacates unless growing
+  if(hit){
+    // moving into own tail-tip is fatal only if not vacating — handled above
+    playerDies(); return;
+  }
+  G.snake.unshift({x:nx,y:ny});
+  if(G.grow>0) G.grow--; else G.snake.pop();
+
+  // --- thread the needle: both flanks are true obstacles (edge/wall/NPC) ---
+  const obst=(x,y)=>{
+    if(outOfBounds(x,y)) return true;
+    if(G.walls.has(key(x,y))) return true;
+    return G.npcs.some(o=>o.alive&&o.cells.some(c=>c.x===x&&c.y===y));
+  };
+  const s1=obst(nx+G.dir.y, ny+G.dir.x), s2=obst(nx-G.dir.y, ny-G.dir.x);
+  if(s1&&s2){
+    if(!G.inNeedle){ G.inNeedle=true; award(20+G.level,"Thread the needle",nx,ny,"bonus"); }
+  } else G.inNeedle=false;
+
+  // --- letter pickup ---
+  if(G.letter && nx===G.letter.x && ny===G.letter.y){
+    const ch=SEQ[G.letterIdx];
+    G.grow++;
+    award(10+G.level, ch, nx, ny, "eat");
+    G.letterIdx=(G.letterIdx+1)%SEQ.length;
+    if(ch==="A") award(25,"NOKIA!",nx,ny-1,"bonus");
+    G.lettersGot++;
+    if(G.lettersGot>=LETTERS_PER_LEVEL){ startLevelEnd(); return; }
+    spawnLetter(); updateHUD();
+  }
+
+  // --- NPC turns (slower than the player: interference, not domination) ---
+  G.tickCount=(G.tickCount||0)+1;
+  const npcGo = G.level>=12 ? (G.tickCount%3!==0) : (G.tickCount%2===0);
+  if(!npcGo) return;
+  for(const n of G.npcs){
+    if(!n.alive){
+      if(n.respawnAt && performance.now()>n.respawnAt){
+        Object.assign(n, makeNpc(n.colorIdx));
+      }
+      continue;
+    }
+    npcMove(n);
+  }
+}
+
+function npcBlocked(n,x,y){
+  if(outOfBounds(x,y)) return "edge";
+  const k=key(x,y);
+  if(G.walls.has(k)) return "wall";
+  if(G.snake.some(s=>s.x===x&&s.y===y)) return "player";
+  for(const o of G.npcs){
+    if(!o.alive) continue;
+    const cells=(o===n)?o.cells.slice(0,-1):o.cells;
+    if(cells.some(c=>c.x===x&&c.y===y)) return "npc";
+  }
+  return null;
+}
+function npcMove(n){
+  const h=n.cells[0];
+  const opts=DIRS.filter(d=>!(d.x===-n.dir.x&&d.y===-n.dir.y));
+  const valid=opts.filter(d=>!npcBlocked(n,h.x+d.x,h.y+d.y));
+  if(!valid.length){
+    // cornered — if the player's body is part of the trap, credit the kill
+    const byPlayer=opts.some(d=>npcBlocked(n,h.x+d.x,h.y+d.y)==="player");
+    npcDie(n, byPlayer);
+    return;
+  }
+  let choice;
+  if(Math.random()<0.15) choice=valid[Math.floor(Math.random()*valid.length)];
+  else{
+    const t=G.letter||{x:G.cols/2,y:G.rows/2};
+    valid.sort((a,b)=>{
+      const da=Math.abs(h.x+a.x-t.x)+Math.abs(h.y+a.y-t.y);
+      const db=Math.abs(h.x+b.x-t.x)+Math.abs(h.y+b.y-t.y);
+      return da-db;
+    });
+    choice=valid[0];
+  }
+  n.dir=choice;
+  const nx=h.x+choice.x, ny=h.y+choice.y;
+  n.cells.unshift({x:nx,y:ny});
+  let grew=false;
+  if(G.letter && nx===G.letter.x && ny===G.letter.y){
+    grew=n.cells.length<10;
+    G.popups.push({label:"Stolen!",pts:"",x:(nx+0.5)*CELL,y:ny*CELL,age:0});
+    spawnLetter();
+  }
+  if(!grew) n.cells.pop();
+  // head-on into the player's head cell → the house always wins
+  const ph=G.snake[0];
+  if(nx===ph.x&&ny===ph.y) npcDie(n,true);
+}
+function npcDie(n, byPlayer){
+  n.alive=false;
+  n.respawnAt=performance.now()+4000;
+  if(byPlayer) award(50+G.level*2,"Snake slayer!",n.cells[0].x,n.cells[0].y,"kill");
+}
+
+function playerDies(){
+  G.lives--;
+  Music.sfx("die");
+  updateHUD();
+  G.state="dying"; G.dieT=performance.now();
+}
+function afterDeath(){
+  if(G.lives<=0){ showGameOver(); return; }
+  const cx=Math.floor(G.cols/2), cy=Math.floor(G.rows/2);
+  G.snake=[{x:cx,y:cy},{x:cx-1,y:cy},{x:cx-2,y:cy}];
+  G.dir={x:1,y:0}; G.dirQ=[]; G.grow=0; G.inNeedle=false;
+  if(G.letter && G.snake.some(s=>s.x===G.letter.x&&s.y===G.letter.y)) spawnLetter();
+  G.state="play"; G.lastTick=performance.now();
+}
+
+/* ============================================================
+   LEVEL-END SEQUENCE
+   freeze → tail retracts to head → spiral wipe in to head →
+   popup → next level builds with reverse spiral from head
+   ============================================================ */
+function startLevelEnd(){
+  G.state="retract";
+  G.retractT=performance.now();
+}
+function computeWipeKeys(){
+  const h=G.snake[0];
+  const keys=new Float32Array(G.cols*G.rows);
+  let maxKey=0;
+  const corners=[[0,0],[G.cols-1,0],[0,G.rows-1],[G.cols-1,G.rows-1]];
+  const maxR=Math.max(...corners.map(([x,y])=>Math.hypot(x-h.x,y-h.y)));
+  for(let y=0;y<G.rows;y++)for(let x=0;x<G.cols;x++){
+    const dx=x-h.x, dy=y-h.y;
+    const r=Math.hypot(dx,dy);
+    let th=Math.atan2(dy,dx); if(th<0)th+=Math.PI*2;
+    const k=(maxR-r)+th/(Math.PI*2);
+    keys[y*G.cols+x]=k;
+    if(k>maxKey)maxKey=k;
+  }
+  G.wipe.keys=keys; G.wipe.maxKey=maxKey;
+}
+function beginWipeOut(){
+  computeWipeKeys();
+  G.wipe.t0=performance.now(); G.wipe.dur=1400;
+  G.state="wipeout";
+}
+function showLevelPopup(){
+  G.state="popup";
+  const P=palette(G.level);
+  const lvlPts=G.score-G.levelStartScore;
+  overlay.innerHTML=`
+    <h1>Level ${G.level} complete</h1>
+    <div class="big" style="color:${P.accent}">+${lvlPts}</div>
+    <div class="score">Total &nbsp;${G.score}</div>
+    <div class="hint pulseText">Press <b>①</b> for level ${G.level+1}</div>`;
+  overlay.classList.add("show");
+  G._popupTimer=setTimeout(()=>advanceLevel(),3800);
+}
+function advanceLevel(){
+  clearTimeout(G._popupTimer);
+  overlay.classList.remove("show");
+  if(G.level>=MAX_LEVEL){ showWin(); return; }
+  buildLevel(G.level+1);
+  computeWipeKeys();
+  G.wipe.t0=performance.now(); G.wipe.dur=1400;
+  G.state="wipein";
+}
+function showWin(){
+  G.state="win";
+  overlay.innerHTML=`
+    <h1>All 20 levels cleared</h1>
+    <canvas id="titleCanvas" width="320" height="80"></canvas>
+    <div class="big">${G.score}</div>
+    <div class="hint">final score</div>
+    <div class="hint pulseText">Press <b>①</b> to play again</div>`;
+  overlay.classList.add("show");
+  drawTitleWord(document.getElementById("titleCanvas"));
+}
+function showGameOver(){
+  G.state="gameover";
+  overlay.innerHTML=`
+    <h1>Game over</h1>
+    <div class="big">${G.score}</div>
+    <div class="hint">level ${G.level}</div>
+    <div class="hint pulseText">Press <b>①</b> to play again</div>`;
+  overlay.classList.add("show");
+}
+function showMenu(){
+  G.state="menu";
+  buildLevel(1);
+  overlay.innerHTML=`
+    <canvas id="titleCanvas" width="360" height="90"></canvas>
+    <h1>Snake · Booth Edition</h1>
+    <div class="hint">Collect the letters. Spell it 3× to clear each level.<br>
+    Dodge walls and rival snakes — style points for close calls.</div>
+    <div class="hint pulseText" style="margin-top:14px">Press <b>①</b> to start</div>`;
+  overlay.classList.add("show");
+  drawTitleWord(document.getElementById("titleCanvas"));
+}
+function drawTitleWord(c){
+  const x=c.getContext("2d");
+  x.clearRect(0,0,c.width,c.height);
+  const s=c.height*0.9, w=s*0.8, x0=c.width/2-(SEQ.length-1)*w/2;
+  SEQ.forEach((ch,i)=>drawGlyph(x,ch,x0+i*w,c.height/2,s,"#EAF0FF",0.6));
+}
+function startGame(){
+  overlay.classList.remove("show");
+  G.score=0; G.lives=3;
+  buildLevel(1);
+  Music.start();
+  G.state="play"; G.lastTick=performance.now();
+}
+
+/* ============================================================
+   INPUT — keyboard + 3-button USB pad (Gamepad API)
+   d-pad: move · B0 ①: start/confirm · B1 ②: pause · B2 ③: mute
+   ============================================================ */
+function pushDir(d){
+  const last=G.dirQ.length?G.dirQ[G.dirQ.length-1]:G.dir;
+  if(d.x===-last.x&&d.y===-last.y) return;
+  if(d.x===last.x&&d.y===last.y) return;
+  if(G.dirQ.length<2) G.dirQ.push(d);
+}
+function primary(){
+  Music.ensure(); Music.start();
+  if(G.state==="menu"||G.state==="gameover"||G.state==="win") startGame();
+  else if(G.state==="popup") advanceLevel();
+  else if(G.state==="paused"){ G.state="play"; overlay.classList.remove("show"); G.lastTick=performance.now(); }
+}
+function togglePause(){
+  if(G.state==="play"){
+    G.state="paused";
+    overlay.innerHTML=`<h1>Paused</h1><div class="hint pulseText">Press <b>②</b> or <b>①</b> to resume</div>`;
+    overlay.classList.add("show");
+  } else if(G.state==="paused"){
+    G.state="play"; overlay.classList.remove("show"); G.lastTick=performance.now();
+  }
+}
+function toggleMute(){
+  G.muted=!G.muted; Music.setMuted(G.muted);
+}
+
+window.addEventListener("keydown",e=>{
+  const k=e.key.toLowerCase();
+  if(["arrowup","arrowdown","arrowleft","arrowright"," "].includes(e.key.toLowerCase())) e.preventDefault();
+  if(k==="arrowup"||k==="w") pushDir({x:0,y:-1});
+  else if(k==="arrowdown"||k==="s") pushDir({x:0,y:1});
+  else if(k==="arrowleft"||k==="a") pushDir({x:-1,y:0});
+  else if(k==="arrowright"||k==="d") pushDir({x:1,y:0});
+  else if(k==="enter"||k===" ") primary();
+  else if(k==="p") togglePause();
+  else if(k==="m") toggleMute();
+});
+
+const pad={b:[false,false,false], up:false,down:false,left:false,right:false};
+function pollPads(){
+  const gps=navigator.getGamepads?navigator.getGamepads():[];
+  for(const gp of gps){
+    if(!gp) continue;
+    // d-pad as buttons 12-15 (standard) or axes 0/1 (many budget pads)
+    const U=(gp.buttons[12]&&gp.buttons[12].pressed)||gp.axes[1]<-0.5;
+    const D=(gp.buttons[13]&&gp.buttons[13].pressed)||gp.axes[1]> 0.5;
+    const L=(gp.buttons[14]&&gp.buttons[14].pressed)||gp.axes[0]<-0.5;
+    const R=(gp.buttons[15]&&gp.buttons[15].pressed)||gp.axes[0]> 0.5;
+    if(U&&!pad.up) pushDir({x:0,y:-1});
+    if(D&&!pad.down) pushDir({x:0,y:1});
+    if(L&&!pad.left) pushDir({x:-1,y:0});
+    if(R&&!pad.right) pushDir({x:1,y:0});
+    pad.up=U;pad.down=D;pad.left=L;pad.right=R;
+    for(let i=0;i<3;i++){
+      const p=!!(gp.buttons[i]&&gp.buttons[i].pressed);
+      if(p&&!pad.b[i]){
+        if(i===0) primary();
+        else if(i===1) togglePause();
+        else toggleMute();
+      }
+      pad.b[i]=p;
+    }
+    break; // first connected pad wins
+  }
+}
+
+/* ============================================================
+   RENDER
+   ============================================================ */
+function rr(x,y,w,h,r){
+  ctx.beginPath();
+  if(ctx.roundRect) ctx.roundRect(x,y,w,h,r);
+  else ctx.rect(x,y,w,h);
+}
+function drawScene(){
+  const P=palette(G.level);
+  const W=G.cols*CELL, H=G.rows*CELL;
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle=P.bg; ctx.fillRect(0,0,W,H);
+
+  // grid — pulses with the beat at scope 3 (level 15+)
+  const gp = G.pulseScope>=3 ? G.pulse : 0;
+  ctx.strokeStyle=P.gridCol;
+  ctx.lineWidth=1+gp*0.8;
+  ctx.beginPath();
+  for(let x=1;x<G.cols;x++){ ctx.moveTo(x*CELL,0); ctx.lineTo(x*CELL,H); }
+  for(let y=1;y<G.rows;y++){ ctx.moveTo(0,y*CELL); ctx.lineTo(W,y*CELL); }
+  ctx.stroke();
+
+  // walls — pulse at scope 2 (level 10+)
+  const wp = G.pulseScope>=2 ? G.pulse : 0;
+  for(const k of G.walls){
+    const [x,y]=k.split(",").map(Number);
+    ctx.save();
+    if(P.glow>0.15){ ctx.shadowColor=P.wallEdge; ctx.shadowBlur=(6+10*wp)*P.glow; }
+    ctx.fillStyle=P.wall;
+    rr(x*CELL+1.5, y*CELL+1.5, CELL-3, CELL-3, 4+3*P.glow);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // letter — always the brightest thing on the field
+  if(G.letter && G.state!=="retract" && G.state!=="wipeout" && G.state!=="popup"){
+    const lp = G.pulseScope>=0.5 ? G.pulse : 0;
+    const s = CELL*(0.92+0.10*lp);
+    ctx.save();
+    ctx.shadowColor=P.letter; ctx.shadowBlur=(4+16*lp)* (0.3+P.glow);
+    drawGlyph(ctx, SEQ[G.letterIdx], (G.letter.x+0.5)*CELL, (G.letter.y+0.5)*CELL, s, P.letter, P.glow);
+    ctx.restore();
+  }
+
+  // NPC snakes
+  for(const n of G.npcs){
+    if(!n.alive) continue;
+    const col=palette(1).npc[n.colorIdx%3];
+    ctx.save();
+    if(P.glow>0.2){ ctx.shadowColor=col; ctx.shadowBlur=6*P.glow; }
+    n.cells.forEach((c,i)=>{
+      ctx.fillStyle=col;
+      ctx.globalAlpha=i===0?1:0.85;
+      rr(c.x*CELL+2, c.y*CELL+2, CELL-4, CELL-4, i===0?7:5);
+      ctx.fill();
+    });
+    ctx.restore();
+    ctx.globalAlpha=1;
+  }
+
+  // player snake — chunky segments, a nod to the original
+  ctx.save();
+  if(P.glow>0.1){ ctx.shadowColor=P.snake; ctx.shadowBlur=4+12*P.glow; }
+  for(let i=G.snake.length-1;i>=0;i--){
+    const c=G.snake[i];
+    ctx.fillStyle=i===0?P.snakeHd:P.snake;
+    const inset=i===0?1:2;
+    rr(c.x*CELL+inset, c.y*CELL+inset, CELL-inset*2, CELL-inset*2, i===0?8:5);
+    ctx.fill();
+  }
+  ctx.restore();
+  // eyes
+  if(G.snake.length){
+    const h=G.snake[0], d=G.dir;
+    ctx.fillStyle=P.bg;
+    const ex=(h.x+0.5)*CELL, ey=(h.y+0.5)*CELL, o=CELL*0.18, f=CELL*0.16;
+    ctx.beginPath();
+    ctx.arc(ex+d.x*f - d.y*o, ey+d.y*f - d.x*o, CELL*0.075, 0, 7);
+    ctx.arc(ex+d.x*f + d.y*o, ey+d.y*f + d.x*o, CELL*0.075, 0, 7);
+    ctx.fill();
+  }
+
+  // score popups
+  for(const p of G.popups){
+    const a=1-p.age/1.15;
+    if(a<=0) continue;
+    ctx.save();
+    ctx.globalAlpha=Math.min(1,a*1.4);
+    ctx.textAlign="center";
+    ctx.fillStyle=P.popup;
+    ctx.shadowColor=P.popup; ctx.shadowBlur=8*P.glow;
+    const yy=p.y - p.age*26;
+    ctx.font=`700 ${Math.round(CELL*0.52)}px "Segoe UI",system-ui,sans-serif`;
+    ctx.fillText(p.label, p.x, yy);
+    if(p.pts){
+      ctx.font=`800 ${Math.round(CELL*0.62)}px "Segoe UI",system-ui,sans-serif`;
+      ctx.fillText(p.pts, p.x, yy+CELL*0.66);
+    }
+    ctx.restore();
+  }
+
+  // death flash
+  if(G.state==="dying"){
+    const e=(performance.now()-G.dieT)/900;
+    ctx.fillStyle=`rgba(255,40,60,${0.35*Math.sin(Math.min(1,e)*Math.PI)})`;
+    ctx.fillRect(0,0,W,H);
+  }
+
+  // spiral wipes
+  if(G.state==="wipeout"||G.state==="wipein"||G.state==="popup"){
+    const e = G.state==="popup" ? 1 : Math.min(1,(performance.now()-G.wipe.t0)/G.wipe.dur);
+    const ease = 1-Math.pow(1-e,2.2);
+    ctx.fillStyle=P.voidCol;
+    const K=G.wipe.keys, mk=G.wipe.maxKey;
+    for(let y=0;y<G.rows;y++)for(let x=0;x<G.cols;x++){
+      const k=K[y*G.cols+x];
+      let covered;
+      if(G.state==="wipein") covered = (mk-k) > ease*(mk+0.001);          // reveal head → out
+      else covered = k <= ease*(mk-0.02);                                  // consume edge → head
+      if(covered) ctx.fillRect(x*CELL-0.5, y*CELL-0.5, CELL+1, CELL+1);
+    }
+  }
+}
+
+/* ---------- main loop ---------- */
+function loop(now){
+  requestAnimationFrame(loop);
+  pollPads();
+  G.pulse*=0.90;
+
+  switch(G.state){
+    case "play":
+      while(now-G.lastTick>=G.tickMs){
+        G.lastTick+=G.tickMs;
+        tick();
+        if(G.state!=="play") break;
+      }
+      break;
+    case "dying":
+      if(now-G.dieT>900) afterDeath();
+      break;
+    case "retract":
+      if(now-G.retractT>45){
+        G.retractT=now;
+        if(G.snake.length>1) G.snake.pop();
+        else beginWipeOut();
+      }
+      break;
+    case "wipeout":
+      if(now-G.wipe.t0>=G.wipe.dur) showLevelPopup();
+      break;
+    case "wipein":
+      if(now-G.wipe.t0>=G.wipe.dur){ G.state="play"; G.lastTick=now; }
+      break;
+  }
+
+  // popup aging
+  for(const p of G.popups) p.age+=1/60;
+  G.popups=G.popups.filter(p=>p.age<1.2);
+
+  drawScene();
+
+  // beat-synced border glow at scope 1+ (level 5+)
+  const P=palette(G.level);
+  if(G.pulseScope>=1 && P.glow>0.05){
+    cv.style.boxShadow=`0 0 ${Math.round(6+34*G.pulse*P.glow)}px ${P.accent}`;
+  } else cv.style.boxShadow="0 4px 22px rgba(10,20,50,0.10)";
+}
+
+Music.onBeat=()=>{ G.pulse=1; };
+window.addEventListener("gamepadconnected",()=>{});
+showMenu();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
