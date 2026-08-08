@@ -11,6 +11,9 @@ Play it: https://lapper13.github.io/Synth-Snake/
 Arrow keys or WASD to steer. Enter or Space to start and confirm. P pauses, M mutes, Esc returns
 to the title screen. A 3-button USB gamepad with a d-pad also works.
 
+On a touch screen, swipe on the board to steer and tap to start or confirm. Pause and mute are
+the two buttons at the top right. Hold the device in landscape.
+
 ## Install it on a tablet
 
 Open the link, then Share, then Add to Home Screen. It launches full screen and plays with the
