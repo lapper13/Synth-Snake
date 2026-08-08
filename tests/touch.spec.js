@@ -70,3 +70,19 @@ test('touch never scrolls the page', async ({ page }) => {
   await tap(page, c);
   expect(await page.evaluate(() => window.scrollY)).toBe(0);
 });
+
+test('pause and mute are reachable without a keyboard', async ({ page }) => {
+  await page.goto('/index.html');
+  await tap(page, await stageCentre(page));
+  await page.waitForFunction(() => window.G.state === 'play', null, { timeout: 5000 });
+
+  await page.locator('#btnPause').tap();
+  expect(await page.evaluate(() => window.G.state)).toBe('paused');
+
+  await page.locator('#btnPause').tap();
+  expect(await page.evaluate(() => window.G.state)).toBe('play');
+
+  const before = await page.evaluate(() => window.G.muted);
+  await page.locator('#btnMute').tap();
+  expect(await page.evaluate(() => window.G.muted)).toBe(!before);
+});

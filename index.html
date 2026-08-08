@@ -79,6 +79,16 @@
   #seq span.next{color:var(--accent)}
   #seq svg{width:15px;height:15px;display:block}
   #lives{letter-spacing:4px;font-size:18px}
+  #hudBtns{display:flex;gap:8px}
+  #hudBtns button{
+    width:34px;height:34px;border-radius:50%;
+    background:none;border:1px solid currentColor;color:var(--hud-fg);
+    font-size:13px;font-weight:700;line-height:1;
+    opacity:.45;cursor:pointer;transition:opacity .15s,color .15s;
+  }
+  #hudBtns button:hover{opacity:.85}
+  #hudBtns button.on{opacity:1;color:var(--accent)}
+  body.darkui #hudBtns button{color:#EAF0FF}
   #stage{position:relative;line-height:0;margin-top:14px;touch-action:none}
   #hezBar{
     position:absolute;top:-12px;left:2px;right:2px;height:7px;
@@ -150,6 +160,10 @@
     <div id="seq"></div>
     <div class="box"><span class="lbl">Letters</span><span class="val" id="lettersV">0/15</span></div>
     <div class="box"><span class="lbl">Snakes</span><span class="val" id="lives">●●●</span></div>
+    <div id="hudBtns">
+      <button id="btnPause" type="button" aria-label="Pause">II</button>
+      <button id="btnMute" type="button" aria-label="Mute">&#9834;</button>
+    </div>
   </div>
 
   <div id="playRow">
@@ -1334,6 +1348,12 @@ stageEl.addEventListener("touchend", e => {
 }, { passive:true });
 
 stageEl.addEventListener("touchcancel", () => { touchStart = null; }, { passive:true });
+
+document.getElementById("btnPause").addEventListener("click", () => togglePause());
+document.getElementById("btnMute").addEventListener("click", () => {
+  toggleMute();
+  document.getElementById("btnMute").classList.toggle("on", G.muted);
+});
 
 window.addEventListener("keydown",e=>{
   const k=e.key.toLowerCase();
