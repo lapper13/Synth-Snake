@@ -88,3 +88,24 @@ test('the service worker activates and caches the game', async ({ page }) => {
   expect(cached).toContain('/icons/icon-512.png');
   expect(cached).toContain('/icons/apple-touch-icon.png');
 });
+
+test('the game loads and runs with the network offline', async ({ page, context }) => {
+  // Prime the cache.
+  await page.goto('/index.html');
+  await page.evaluate(() => navigator.serviceWorker.ready);
+
+  // Cut the network at the browser, the way airplane mode would.
+  await context.setOffline(true);
+
+  await page.reload();
+
+  const canvas = page.locator('canvas#game');
+  await expect(canvas).toBeVisible();
+
+  // The canvas being present is not proof the game booted. Check that its
+  // script ran by confirming the HUD was populated from JS.
+  await expect(page.locator('#scoreV')).not.toBeEmpty();
+  await expect(page.locator('#seq span').first()).toBeVisible();
+
+  await context.setOffline(false);
+});
