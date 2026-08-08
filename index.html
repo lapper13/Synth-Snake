@@ -79,7 +79,7 @@
   #seq span.next{color:var(--accent)}
   #seq svg{width:15px;height:15px;display:block}
   #lives{letter-spacing:4px;font-size:18px}
-  #stage{position:relative;line-height:0;margin-top:14px}
+  #stage{position:relative;line-height:0;margin-top:14px;touch-action:none}
   #hezBar{
     position:absolute;top:-12px;left:2px;right:2px;height:7px;
     border-radius:99px;background:rgba(128,128,160,.25);overflow:hidden;display:none;
@@ -621,6 +621,7 @@ const G = {
   particles:[], reasm:null, reasmT0:0,
   menuIdx:0, menuBeatT:0
 };
+window.G = G;   // test seam: lets Playwright assert on real game state
 const key=(x,y)=>x+","+y;
 const DIRS=[{x:1,y:0},{x:-1,y:0},{x:0,y:1},{x:0,y:-1}];
 
@@ -1299,6 +1300,40 @@ function devJump(step){
   G.state="play"; G.lastTick=performance.now();
   G.popups.push({label:"Level "+n, pts:"", x:G.cols*CELL/2, y:G.rows*CELL/2, age:0});
 }
+
+/* ---------- touch: swipe to steer, tap to confirm ----------
+   Feeds the same pushDir/primary the keyboard and gamepad use, so every
+   screen (menu, difficulty, play, pause, initials) works by touch for free. */
+const SWIPE_MIN_PX = 24;   // above incidental thumb drift, below a deliberate swipe
+const TAP_MAX_MS   = 500;
+
+let touchStart = null;
+const stageEl = document.getElementById("stage");
+
+stageEl.addEventListener("touchstart", e => {
+  if(e.touches.length !== 1){ touchStart = null; return; }
+  const t = e.touches[0];
+  touchStart = { x:t.clientX, y:t.clientY, at:performance.now() };
+}, { passive:true });
+
+stageEl.addEventListener("touchend", e => {
+  if(!touchStart) return;
+  if(e.changedTouches.length !== 1){ touchStart = null; return; }
+  const t  = e.changedTouches[0];
+  const dx = t.clientX - touchStart.x;
+  const dy = t.clientY - touchStart.y;
+  const dt = performance.now() - touchStart.at;
+  touchStart = null;
+
+  if(Math.abs(dx) < SWIPE_MIN_PX && Math.abs(dy) < SWIPE_MIN_PX){
+    if(dt <= TAP_MAX_MS) primary();
+    return;
+  }
+  if(Math.abs(dx) > Math.abs(dy)) pushDir({ x: dx>0 ? 1 : -1, y: 0 });
+  else                            pushDir({ x: 0, y: dy>0 ? 1 : -1 });
+}, { passive:true });
+
+stageEl.addEventListener("touchcancel", () => { touchStart = null; }, { passive:true });
 
 window.addEventListener("keydown",e=>{
   const k=e.key.toLowerCase();
