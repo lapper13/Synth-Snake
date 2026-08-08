@@ -49,3 +49,42 @@ test('the head links the manifest and the iOS icon', async ({ page }) => {
     .getAttribute('content');
   expect(viewport).toContain('viewport-fit=cover');
 });
+
+test('the service worker activates and caches the game', async ({ page }) => {
+  await page.goto('/index.html');
+
+  const state = await page.evaluate(async () => {
+    const reg = await navigator.serviceWorker.ready;
+    const sw = reg.active;
+    if (!sw) return 'none';
+    // `ready` resolves as soon as a worker becomes the active worker, which
+    // happens when it enters "activating" -- before its activate handler's
+    // waitUntil has settled. Wait for the real "activated" transition instead
+    // of racing it.
+    if (sw.state !== 'activated') {
+      await new Promise((resolve) => {
+        sw.addEventListener('statechange', function onChange() {
+          if (sw.state === 'activated') {
+            sw.removeEventListener('statechange', onChange);
+            resolve();
+          }
+        });
+      });
+    }
+    return sw.state;
+  });
+  expect(state).toBe('activated');
+
+  const cached = await page.evaluate(async () => {
+    const names = await caches.keys();
+    const cache = await caches.open(names[0]);
+    const keys = await cache.keys();
+    return keys.map((r) => new URL(r.url).pathname);
+  });
+
+  expect(cached).toContain('/index.html');
+  expect(cached).toContain('/manifest.json');
+  expect(cached).toContain('/icons/icon-192.png');
+  expect(cached).toContain('/icons/icon-512.png');
+  expect(cached).toContain('/icons/apple-touch-icon.png');
+});
