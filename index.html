@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>NOKIA Snake — Booth Edition</title>
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
@@ -16,7 +16,7 @@
     --accent:#005AFF;
   }
   *{margin:0;padding:0;box-sizing:border-box}
-  html,body{height:100%}
+  html,body{height:100dvh}
   body{
     background:#F4F6FB;
     font-family:"Segoe UI",system-ui,-apple-system,sans-serif;
@@ -150,10 +150,48 @@
   body.darkui #hud, body.darkui #controlsHint{ text-shadow:0 1px 8px rgba(0,0,0,.75) }
   body.darkui #controlsHint{ opacity:.75 }
   body.darkui #seq span{ text-shadow:0 1px 6px rgba(0,0,0,.8) }
+
+  /* ---------- touch / small-viewport layout ---------- */
+
+  #rotate{display:none}
+  @media (orientation: portrait) and (max-width: 900px){
+    #rotate{
+      display:flex;position:fixed;inset:0;z-index:50;
+      align-items:center;justify-content:center;text-align:center;
+      background:#0A041A;color:#7CF7FF;
+      font-size:18px;letter-spacing:.22em;text-transform:uppercase;font-weight:700;
+      line-height:2;
+    }
+  }
+
+  /* Not enough width for the board and the leaderboard side by side:
+     stack them instead of letting overflow:hidden slice the panel off. */
+  @media (max-width: 700px){
+    #playRow{flex-direction:column;align-items:center}
+    #sideBoard{min-width:0;width:min(96vw,420px)}
+    #hud{flex-wrap:wrap;justify-content:center;gap:8px 14px}
+  }
+
+  /* Short viewport (a phone held in landscape): give the board the height
+     by compacting everything around it. */
+  @media (max-height: 480px){
+    #hud{padding:4px 10px;margin-bottom:4px}
+    #hud .val{font-size:16px}
+    #hud .lbl{font-size:9px}
+    #stage{margin-top:6px}
+    canvas#game{max-height:82vh}
+    #controlsHint{display:none}
+    #sideBoard{display:none}
+  }
+
+  /* Keep the HUD and hint clear of a notch or home indicator. */
+  #hud{padding-left:max(18px, env(safe-area-inset-left));
+       padding-right:max(18px, env(safe-area-inset-right))}
 </style>
 </head>
 <body>
   <div id="roomGlow"></div>
+  <div id="rotate"><div>Rotate your device<br>to play</div></div>
   <div id="hud">
     <div class="box"><span class="lbl">Score</span><span class="val" id="scoreV">0</span></div>
     <div class="box"><span class="lbl">Level</span><span class="val" id="levelV">1</span></div>

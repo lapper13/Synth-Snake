@@ -86,3 +86,32 @@ test('pause and mute are reachable without a keyboard', async ({ page }) => {
   await page.locator('#btnMute').tap();
   expect(await page.evaluate(() => window.G.muted)).toBe(!before);
 });
+
+test('nothing is clipped off screen at a phone viewport', async ({ page }) => {
+  await page.goto('/index.html');
+  const vp = page.viewportSize();
+
+  // Every visible top-level element must sit inside the viewport. The bug this
+  // guards is #sideBoard being sliced in half by overflow:hidden. On a short
+  // landscape phone the panel is hidden outright, which is also acceptable:
+  // what is NOT acceptable is a visible element hanging off an edge.
+  for (const sel of ['#hud', '#stage', '#sideBoard', 'canvas#game']) {
+    const box = await page.locator(sel).boundingBox();
+    if (box === null) continue;          // hidden is fine, clipped is not
+    expect(box.x, `${sel} off the left`).toBeGreaterThanOrEqual(-1);
+    expect(box.x + box.width, `${sel} off the right`).toBeLessThanOrEqual(vp.width + 1);
+    expect(box.y + box.height, `${sel} off the bottom`).toBeLessThanOrEqual(vp.height + 1);
+  }
+
+  // And the board itself must never be the thing that got hidden.
+  await expect(page.locator('canvas#game')).toBeVisible();
+});
+
+test('portrait shows a rotate prompt', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/index.html');
+  await expect(page.locator('#rotate')).toBeVisible();
+
+  await page.setViewportSize({ width: 844, height: 390 });
+  await expect(page.locator('#rotate')).toBeHidden();
+});
