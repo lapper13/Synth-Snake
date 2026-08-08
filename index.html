@@ -1338,27 +1338,22 @@ function pollPads(){
     // d-pad as buttons 12-15 (standard) or axes 0/1 (many budget pads)
     const U=(gp.buttons[12]&&gp.buttons[12].pressed)||gp.axes[1]<-0.5;
     const D=(gp.buttons[13]&&gp.buttons[13].pressed)||gp.axes[1]> 0.5;
-    const L=(gp.buttons[14]&&gp.buttons[14].pressed)||gp.axes[4]<-0.5;
-    const R=(gp.buttons[15]&&gp.buttons[15].pressed)||gp.axes[4]> 0.5;
+    const L=(gp.buttons[14]&&gp.buttons[14].pressed)||gp.axes[0]<-0.5;
+    const R=(gp.buttons[15]&&gp.buttons[15].pressed)||gp.axes[0]> 0.5;
     if(U&&!pad.up) pushDir({x:0,y:-1});
     if(D&&!pad.down) pushDir({x:0,y:1});
     if(L&&!pad.left) pushDir({x:-1,y:0});
     if(R&&!pad.right) pushDir({x:1,y:0});
     pad.up=U;pad.down=D;pad.left=L;pad.right=R;
-    const buttonMap = {
-      2: primary,       // A button
-      1: togglePause,   // B button
-      5: toggleMute,    // C button
-      9: primary        // Start button
-    };
-    for (let btnIdx of Object.keys(buttonMap)) {
-      btnIdx = parseInt(btnIdx);
-      const pressed = !!(gp.buttons[btnIdx] && gp.buttons[btnIdx].pressed);
-    if (pressed && !pad.b[btnIdx]) {
-      buttonMap[btnIdx]();
+    for(let i=0;i<3;i++){
+      const p=!!(gp.buttons[i]&&gp.buttons[i].pressed);
+      if(p&&!pad.b[i]){
+        if(i===0) primary();
+        else if(i===1) togglePause();
+        else toggleMute();
+      }
+      pad.b[i]=p;
     }
-    pad.b[btnIdx ] = pressed;
-  }
     break; // first connected pad wins
   }
 }
