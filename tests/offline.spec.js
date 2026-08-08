@@ -30,3 +30,22 @@ test('the manifest is valid and declares standalone display', async ({ request }
   expect(sizes).toContain('192x192');
   expect(sizes).toContain('512x512');
 });
+
+test('the head links the manifest and the iOS icon', async ({ page }) => {
+  await page.goto('/index.html');
+
+  await expect(page.locator('link[rel="manifest"]')).toHaveAttribute('href', './manifest.json');
+  await expect(page.locator('link[rel="apple-touch-icon"]')).toHaveAttribute(
+    'href',
+    './icons/apple-touch-icon.png',
+  );
+  await expect(page.locator('meta[name="apple-mobile-web-app-capable"]')).toHaveAttribute(
+    'content',
+    'yes',
+  );
+
+  const viewport = await page
+    .locator('meta[name="viewport"]')
+    .getAttribute('content');
+  expect(viewport).toContain('viewport-fit=cover');
+});
