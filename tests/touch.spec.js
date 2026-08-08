@@ -107,6 +107,26 @@ test('nothing is clipped off screen at a phone viewport', async ({ page }) => {
   await expect(page.locator('canvas#game')).toBeVisible();
 });
 
+test('nothing is clipped in a narrow in-app browser window', async ({ page }) => {
+  // Reproduces a real in-app-browser report: ~850x700 CSS px is too wide to
+  // trigger the <=700px stacking rule and too tall to trigger the <=480px
+  // compaction rule, so #sideBoard was sliced in half by overflow:hidden
+  // with no way to scroll to the rest of it.
+  await page.setViewportSize({ width: 850, height: 700 });
+  await page.goto('/index.html');
+  const vp = page.viewportSize();
+
+  const box = await page.locator('#sideBoard').boundingBox();
+  if (box !== null) {                   // hidden is fine, clipped is not
+    expect(box.x, '#sideBoard off the left').toBeGreaterThanOrEqual(-1);
+    expect(box.x + box.width, '#sideBoard off the right').toBeLessThanOrEqual(vp.width + 1);
+    expect(box.y, '#sideBoard off the top').toBeGreaterThanOrEqual(-1);
+    expect(box.y + box.height, '#sideBoard off the bottom').toBeLessThanOrEqual(vp.height + 1);
+  }
+
+  await expect(page.locator('canvas#game')).toBeVisible();
+});
+
 test('portrait shows a rotate prompt', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/index.html');

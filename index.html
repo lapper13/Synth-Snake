@@ -26,11 +26,12 @@
   }
   #roomGlow{position:fixed;inset:0;pointer-events:none;z-index:0}
   #hud,#playRow,#controlsHint{position:relative;z-index:1}
-  #playRow{display:flex;gap:18px;align-items:stretch;justify-content:center}
+  #playRow{display:flex;gap:18px;align-items:stretch;justify-content:center;flex-wrap:wrap;min-height:0}
   #sideBoard{
     min-width:172px;padding:14px 16px;border-radius:12px;
     background:rgba(255,255,255,.55);border:1px solid rgba(11,27,58,.12);
     color:var(--hud-fg);display:flex;flex-direction:column;gap:6px;
+    min-height:0;overflow-y:auto;overflow-x:hidden;
     transition:background .8s linear,color .8s linear,border-color .8s linear;
   }
   body.darkui #sideBoard{background:rgba(10,4,26,.45);border-color:rgba(124,247,255,.18)}
@@ -89,7 +90,7 @@
   #hudBtns button:hover{opacity:.85}
   #hudBtns button.on{opacity:1;color:var(--accent)}
   body.darkui #hudBtns button{color:#EAF0FF}
-  #stage{position:relative;line-height:0;margin-top:14px;touch-action:none}
+  #stage{position:relative;line-height:0;margin-top:14px;touch-action:none;flex-shrink:0}
   #hezBar{
     position:absolute;top:-12px;left:2px;right:2px;height:7px;
     border-radius:99px;background:rgba(128,128,160,.25);overflow:hidden;display:none;
@@ -164,10 +165,18 @@
     }
   }
 
-  /* Not enough width for the board and the leaderboard side by side:
-     stack them instead of letting overflow:hidden slice the panel off. */
-  @media (max-width: 700px){
-    #playRow{flex-direction:column;align-items:center}
+  /* Not enough width for the board and the leaderboard side by side: #playRow's
+     own flex-wrap (above) already drops the panel onto its own line at any
+     width, which stops it being sliced in half by overflow:hidden. But the
+     canvas can render wider than expected on high-DPR screens (its on-screen
+     size follows devicePixelRatio, not just the viewport), so a merely-wrapped
+     row can still be too tall overall -- the two lines together outgrow the
+     viewport and the panel gets pushed off the bottom instead of the side.
+     Below this width, force a real single-column layout (no wrapping) so the
+     panel shrinks -- and, if still too short for its rows, scrolls internally
+     via its own overflow-y -- rather than overflowing its box. */
+  @media (max-width: 900px){
+    #playRow{flex-direction:column;flex-wrap:nowrap;align-items:center}
     #sideBoard{min-width:0;width:min(96vw,420px)}
     #hud{flex-wrap:wrap;justify-content:center;gap:8px 14px}
   }
