@@ -16,6 +16,18 @@ module.exports = defineConfig({
     timeout: 30000,
   },
   projects: [
-    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+    {
+      name: 'desktop',
+      testMatch: /offline\.spec\.js/,
+      use: { ...devices['Desktop Chrome'] },
+    },
+    {
+      name: 'mobile',
+      testMatch: /touch\.spec\.js/,
+      // Forced to chromium: CDP's Input.dispatchTouchEvent (used by the swipe/tap
+      // helpers in tests/touch.spec.js) is a Chromium-only protocol. The device
+      // preset defaults to webkit; override it while keeping its viewport/touch shape.
+      use: { ...devices['iPhone 13 landscape'], defaultBrowserType: 'chromium' },
+    },
   ],
 });
