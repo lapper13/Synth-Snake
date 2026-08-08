@@ -1,0 +1,12 @@
+{
+  "name": "synth-snake",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Nokia Snake booth edition, installable and offline-capable",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.47.0"
+  }
+}
