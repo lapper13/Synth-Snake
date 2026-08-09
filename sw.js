@@ -7,7 +7,7 @@
  *
  * Bump CACHE when any asset changes, or returning visitors keep the old build.
  */
-const CACHE = 'synth-snake-v4';
+const CACHE = 'synth-snake-v5';
 
 const ASSETS = [
   './',
