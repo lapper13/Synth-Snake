@@ -215,3 +215,35 @@ test('the on-screen controller is hidden on desktop', async ({ page }) => {
   await page.goto('/index.html');
   await expect(page.locator('#touchpad')).toBeHidden();
 });
+
+// Rectangle intersection helper for the new geometry tests below. Two
+// bounding boxes count as touching-but-not-overlapping (edges flush) as
+// not-intersecting, since that is a legitimate non-overlapping layout.
+function rectsIntersect(a, b) {
+  return a.x < b.x + b.width && b.x < a.x + a.width &&
+         a.y < b.y + b.height && b.y < a.y + a.height;
+}
+
+test('the controller does not overlap the game board', async ({ page }) => {
+  await page.goto('/index.html');
+  const vp = page.viewportSize();
+
+  const canvasBox = await page.locator('canvas#game').boundingBox();
+  const dpadBox = await page.locator('#dpad').boundingBox();
+  const actionBox = await page.locator('#btnAction').boundingBox();
+
+  expect(canvasBox).not.toBeNull();
+  expect(dpadBox).not.toBeNull();
+  expect(actionBox).not.toBeNull();
+
+  expect(rectsIntersect(canvasBox, dpadBox), 'dpad overlaps canvas').toBe(false);
+  expect(rectsIntersect(canvasBox, actionBox), 'btnAction overlaps canvas').toBe(false);
+
+  for (const [name, box] of [['#dpad', dpadBox], ['#btnAction', actionBox]]) {
+    expect(box.x, `${name} off the left`).toBeGreaterThanOrEqual(-1);
+    expect(box.y, `${name} off the top`).toBeGreaterThanOrEqual(-1);
+    expect(box.x + box.width, `${name} off the right`).toBeLessThanOrEqual(vp.width + 1);
+    expect(box.y + box.height, `${name} off the bottom`).toBeLessThanOrEqual(vp.height + 1);
+  }
+});
+
