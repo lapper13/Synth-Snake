@@ -343,3 +343,78 @@ test('portrait gives the spare height to the controls, not the leaderboard', asy
   const dpad = await page.locator('#dpad').boundingBox();
   expect(dpad.y).toBeGreaterThan(canvas.y + canvas.height);
 });
+
+/* ---------- one-handed reachability: swipe/tap must work anywhere ----------
+   #stage sits near the top of a portrait phone screen even after Change 2
+   lowers it -- the board is still only ~286px tall out of an 844px-tall
+   screen. Binding the swipe/tap listeners to #stage means a one-handed thumb
+   has to stretch to the board itself. The fix moves those listeners to
+   document, guarded so on-screen controls (#touchpad, #hudBtns) don't also
+   fire a tap/swipe underneath a button press. These tests use the empty
+   strip below the board and above the d-pad -- around x 195, y 565 at
+   390x844 -- which is neither the board nor any control. */
+test('a swipe below the board still steers', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/index.html');
+  const c = await stageCentre(page);
+  await tap(page, c);                       // start a game from the menu
+  await page.waitForFunction(() => window.G && window.G.state === 'play', null, { timeout: 5000 });
+
+  const p = { x: 195, y: 565 };             // below the board, above the d-pad
+  await swipe(page, p, { x: p.x, y: p.y - 120 });
+
+  const dir = await page.evaluate(() => {
+    const q = window.G.dirQ;
+    return q.length ? q[q.length - 1] : window.G.dir;
+  });
+  expect(dir).toEqual({ x: 0, y: -1 });
+});
+
+test('a tap below the board still confirms', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/index.html');
+  expect(await page.evaluate(() => window.G.state)).toBe('menu');
+
+  await tap(page, { x: 195, y: 565 });      // below the board, above the d-pad
+
+  await page.waitForFunction(() => window.G.state !== 'menu', null, { timeout: 5000 });
+  expect(await page.evaluate(() => window.G.state)).not.toBe('menu');
+});
+
+test('the board sits low enough to reach in portrait', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/index.html');
+  const vp = page.viewportSize();
+
+  const canvas = await page.locator('canvas#game').boundingBox();
+  const dpad = await page.locator('#dpad').boundingBox();
+  const btnAction = await page.locator('#btnAction').boundingBox();
+  const hud = await page.locator('#hud').boundingBox();
+
+  // The board's bottom edge must sit below 60% of the viewport height, or a
+  // one-handed thumb anchored near the bottom of the screen cannot reach it
+  // even via the anywhere-swipe fix -- the whole point is to bring the board
+  // down toward the thumb, not just widen where a swipe is accepted.
+  expect(canvas.y + canvas.height).toBeGreaterThan(vp.height * 0.6);
+
+  expect(rectsIntersect(canvas, dpad), 'canvas overlaps dpad').toBe(false);
+  expect(rectsIntersect(canvas, btnAction), 'canvas overlaps btnAction').toBe(false);
+  expect(rectsIntersect(canvas, hud), 'canvas overlaps hud').toBe(false);
+});
+
+test('pressing a hud button does not also fire the tap action', async ({ page }) => {
+  // #hudBtns holds #btnPause/#btnMute/#btnPad. With swipe/tap listeners
+  // moved to document, a press on any hud button would also read as a tap on
+  // document unless #hudBtns is excluded the same way #touchpad is. From
+  // paused, pressing mute must not leak a primary() call that resumes play.
+  await page.goto('/index.html');
+  const c = await stageCentre(page);
+  await tap(page, c);
+  await page.waitForFunction(() => window.G && window.G.state === 'play', null, { timeout: 5000 });
+
+  await page.locator('#btnPause').tap();
+  expect(await page.evaluate(() => window.G.state)).toBe('paused');
+
+  await page.locator('#btnMute').tap();
+  expect(await page.evaluate(() => window.G.state)).toBe('paused');
+});
