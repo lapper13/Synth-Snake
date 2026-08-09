@@ -135,3 +135,33 @@ test('portrait shows a rotate prompt', async ({ page }) => {
   await page.setViewportSize({ width: 844, height: 390 });
   await expect(page.locator('#rotate')).toBeHidden();
 });
+
+test('a swipe turns the snake as soon as it crosses the threshold, not on release', async ({ page }) => {
+  // Regression test for the latency defect: direction must resolve on
+  // touchmove once the swipe passes SWIPE_MIN_PX, not on touchend.
+  await page.goto('/index.html');
+  const c = await stageCentre(page);
+  await tap(page, c);
+  await page.waitForFunction(() => window.G && window.G.state === 'play', null, { timeout: 5000 });
+
+  const client = await page.context().newCDPSession(page);
+  await client.send('Input.dispatchTouchEvent', {
+    type: 'touchStart',
+    touchPoints: [{ x: c.x, y: c.y }],
+  });
+  // Move past SWIPE_MIN_PX (24px) but do NOT send touchEnd yet.
+  await client.send('Input.dispatchTouchEvent', {
+    type: 'touchMove',
+    touchPoints: [{ x: c.x, y: c.y - 60 }],
+  });
+
+  // The direction must already be resolved, before touchend fires.
+  const dir = await page.evaluate(() => {
+    const q = window.G.dirQ;
+    return q.length ? q[q.length - 1] : window.G.dir;
+  });
+  expect(dir).toEqual({ x: 0, y: -1 });
+
+  await client.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await client.detach();
+});
