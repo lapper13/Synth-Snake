@@ -247,3 +247,37 @@ test('the controller does not overlap the game board', async ({ page }) => {
   }
 });
 
+test('the pad toggle hides and shows the controller', async ({ page }) => {
+  await page.goto('/index.html');
+
+  await expect(page.locator('#dpad')).toBeVisible();
+
+  await page.locator('#btnPad').tap();
+  await expect(page.locator('#touchpad')).toBeHidden();
+
+  await page.locator('#btnPad').tap();
+  await expect(page.locator('#touchpad')).toBeVisible();
+});
+
+test('the hidden choice survives a reload', async ({ page }) => {
+  await page.goto('/index.html');
+
+  await page.locator('#btnPad').tap();
+  await expect(page.locator('#touchpad')).toBeHidden();
+
+  await page.reload();
+  await expect(page.locator('#touchpad')).toBeHidden();
+
+  await page.locator('#btnPad').tap();
+  await expect(page.locator('#touchpad')).toBeVisible();
+
+  await page.reload();
+  await expect(page.locator('#touchpad')).toBeVisible();
+});
+
+test('the pad toggle is hidden on desktop', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto('/index.html');
+  await expect(page.locator('#btnPad')).toBeHidden();
+});
+

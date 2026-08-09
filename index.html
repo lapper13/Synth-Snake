@@ -199,6 +199,10 @@
 
   /* ---------- on-screen controller (touch devices only) ---------- */
   #touchpad{display:none}
+  #btnPad{display:none}
+  /* Overrides the media query's display:block below; there is no cascade-order
+     fix that reads more clearly than !important for "user chose to hide this". */
+  #touchpad.padHidden{display:none !important}
   @media (pointer: coarse) and (max-width: 900px),
          (pointer: coarse) and (max-height: 700px){
     #touchpad{
@@ -235,6 +239,10 @@
       -webkit-tap-highlight-color:transparent;touch-action:none;
     }
     #btnAction:active{background:rgba(124,247,255,.5);color:#04121A}
+    /* #btnPad lives in #hudBtns (always in the DOM) but should only show up
+       alongside the rest of the on-screen controller: touch devices, not the
+       full-screen iPad booth demo with a hardware keyboard. */
+    #btnPad{display:inline-flex}
   }
 </style>
 </head>
@@ -250,6 +258,7 @@
     <div id="hudBtns">
       <button id="btnPause" type="button" aria-label="Pause">II</button>
       <button id="btnMute" type="button" aria-label="Mute">&#9834;</button>
+      <button id="btnPad" type="button" aria-label="Toggle on-screen controls">&#10530;</button>
     </div>
   </div>
 
@@ -1472,6 +1481,22 @@ document.getElementById("btnMute").addEventListener("click", () => {
   toggleMute();
   document.getElementById("btnMute").classList.toggle("on", G.muted);
 });
+
+/* ---------- on-screen controller visibility (persisted) ---------- */
+const PAD_KEY = "nokiaSnakePad";
+function padWanted(){
+  try{ return window.localStorage.getItem(PAD_KEY) !== "off"; }catch(e){ return true; }
+}
+function applyPad(on){
+  document.getElementById("touchpad").classList.toggle("padHidden", !on);
+  document.getElementById("btnPad").classList.toggle("on", on);
+  try{ window.localStorage.setItem(PAD_KEY, on ? "on" : "off"); }catch(e){}
+}
+document.getElementById("btnPad").addEventListener("pointerdown", e => {
+  e.preventDefault(); e.stopPropagation();
+  applyPad(document.getElementById("touchpad").classList.contains("padHidden"));
+});
+applyPad(padWanted());
 
 window.addEventListener("keydown",e=>{
   const k=e.key.toLowerCase();
