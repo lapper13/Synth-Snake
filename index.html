@@ -16,7 +16,7 @@
     --accent:#005AFF;
   }
   *{margin:0;padding:0;box-sizing:border-box}
-  html,body{height:100dvh}
+  html,body{height:100dvh;touch-action:none}
   body{
     background:#F4F6FB;
     font-family:"Segoe UI",system-ui,-apple-system,sans-serif;
@@ -1460,21 +1460,27 @@ function devJump(step){
 
 /* ---------- touch: swipe to steer, tap to confirm ----------
    Feeds the same pushDir/primary the keyboard and gamepad use, so every
-   screen (menu, difficulty, play, pause, initials) works by touch for free. */
+   screen (menu, difficulty, play, pause, initials) works by touch for free.
+
+   Listeners live on `document`, not `#stage`: in portrait, the board is a
+   small strip of a tall phone screen (see the one-handed layout above), and
+   a one-handed thumb needs to be able to swipe or tap ANYWHERE on screen,
+   not just on the board itself. `#touchpad` and `#hudBtns` are excluded so a
+   press on the d-pad, action button, or a hud button doesn't also register
+   underneath as a swipe/tap on document -- see the guard in touchstart. */
 const SWIPE_MIN_PX = 24;   // above incidental thumb drift, below a deliberate swipe
 const TAP_MAX_MS   = 500;
 
 let touchStart = null;
-const stageEl = document.getElementById("stage");
 
-stageEl.addEventListener("touchstart", e => {
-  if(e.target.closest && e.target.closest("#touchpad")){ touchStart = null; return; }
+document.addEventListener("touchstart", e => {
+  if(e.target.closest && e.target.closest("#touchpad, #hudBtns")){ touchStart = null; return; }
   if(e.touches.length !== 1){ touchStart = null; return; }
   const t = e.touches[0];
   touchStart = { x:t.clientX, y:t.clientY, at:performance.now(), fired:false };
 }, { passive:true });
 
-stageEl.addEventListener("touchmove", e => {
+document.addEventListener("touchmove", e => {
   if(!touchStart || touchStart.fired) return;
   const t = e.touches[0];
   if(!t) return;
@@ -1486,7 +1492,7 @@ stageEl.addEventListener("touchmove", e => {
   touchStart.fired = true;
 }, { passive:true });
 
-stageEl.addEventListener("touchend", e => {
+document.addEventListener("touchend", e => {
   if(!touchStart) return;
   if(e.changedTouches.length !== 1){ touchStart = null; return; }
   const dt = performance.now() - touchStart.at;
@@ -1496,12 +1502,12 @@ stageEl.addEventListener("touchend", e => {
   if(!fired && dt <= TAP_MAX_MS) primary();
 }, { passive:true });
 
-stageEl.addEventListener("touchcancel", () => { touchStart = null; }, { passive:true });
+document.addEventListener("touchcancel", () => { touchStart = null; }, { passive:true });
 
 /* ---------- on-screen D-pad + action button (touch devices only) ----------
-   #touchpad lives inside #stage, which owns the swipe/tap handlers above.
+   #touchpad lives inside #stage; document owns the swipe/tap handlers above.
    The touchstart guard (top of this block) stops a d-pad/action press from
-   also being read as a swipe gesture on #stage. */
+   also being read as a swipe gesture on document. */
 const DPAD_DIRS = { up:{x:0,y:-1}, down:{x:0,y:1}, left:{x:-1,y:0}, right:{x:1,y:0} };
 document.querySelectorAll("#dpad .dp").forEach(btn => {
   btn.addEventListener("pointerdown", e => {
