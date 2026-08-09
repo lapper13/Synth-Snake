@@ -204,11 +204,14 @@
     #hud .lbl{font-size:9px}
     #seq span{width:22px;height:22px;font-size:12px}
 
-    /* Anchor to the top. With the score panel hidden there is less content
-       than screen, and body's justify-content:center would otherwise float
-       the board down into the d-pad. */
+    /* Anchor to the top, then push the board most of the way down the screen
+       with margin-top on #stage: one-handed thumb reach is the point of
+       portrait mode, so the board sits just above the d-pad instead of
+       clinging to the top of the screen (see one-handed portrait controller
+       rules below -- #dpad's top edge is pinned at bottom:12vh, i.e. y ~=
+       88vh). 20.9vh lands the board's bottom edge ~20px above that. */
     body{justify-content:flex-start;padding-top:2vh}
-    #stage{margin-top:2vh}
+    #stage{margin-top:20.9vh}
   }
 
   /* Keep the HUD and hint clear of a notch or home indicator. */
