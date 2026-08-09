@@ -190,6 +190,25 @@
      thumb-reachable controller. */
   @media (orientation: portrait) and (max-width: 900px){
     canvas#game{max-width:100vw;max-height:52vh}
+
+    /* The board is limited by screen WIDTH in portrait, so it cannot grow into
+       spare height. Give that height to the controls instead of to a score
+       panel: the top ten already shows on the title and game-over screens. */
+    #sideBoard{display:none}
+    #controlsHint{display:none}
+
+    /* Compact the HUD so the board sits nearer the middle of the screen
+       rather than clinging to the top. */
+    #hud{padding:6px 12px;margin-bottom:0}
+    #hud .val{font-size:18px}
+    #hud .lbl{font-size:9px}
+    #seq span{width:22px;height:22px;font-size:12px}
+
+    /* Anchor to the top. With the score panel hidden there is less content
+       than screen, and body's justify-content:center would otherwise float
+       the board down into the d-pad. */
+    body{justify-content:flex-start;padding-top:2vh}
+    #stage{margin-top:2vh}
   }
 
   /* Keep the HUD and hint clear of a notch or home indicator. */

@@ -323,3 +323,23 @@ test('nothing is clipped in portrait', async ({ page }) => {
   }
 });
 
+
+test('portrait gives the spare height to the controls, not the leaderboard', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/index.html');
+
+  // The score panel is redundant in portrait: the top ten already shows on the
+  // title and game-over screens, and it was eating as much height as the board.
+  await expect(page.locator('#sideBoard')).toBeHidden();
+  await expect(page.locator('#controlsHint')).toBeHidden();
+
+  // The board must still be full width and fully on screen.
+  const canvas = await page.locator('canvas#game').boundingBox();
+  const vp = page.viewportSize();
+  expect(canvas.width).toBeGreaterThanOrEqual(vp.width - 2);
+  expect(canvas.y + canvas.height).toBeLessThanOrEqual(vp.height + 1);
+
+  // And the d-pad must still clear it.
+  const dpad = await page.locator('#dpad').boundingBox();
+  expect(dpad.y).toBeGreaterThan(canvas.y + canvas.height);
+});
