@@ -211,7 +211,13 @@
        rules below -- #dpad's top edge is pinned at bottom:12vh, i.e. y ~=
        88vh). 20.9vh lands the board's bottom edge ~20px above that. */
     body{justify-content:flex-start;padding-top:2vh}
-    #stage{margin-top:20.9vh}
+    /* Push the board as low as it will go while reserving the control zone
+       beneath it, so it lands within thumb reach for one-handed swiping.
+       margin-top:auto does the pushing; the reserved space below is derived
+       from where the d-pad actually sits (bottom:12vh) plus its 168px height
+       plus a gap, rather than a number tuned to one screen size. */
+    #playRow{margin-top:auto;margin-bottom:calc(12vh + 190px)}
+    #stage{margin-top:0}
   }
 
   /* Keep the HUD and hint clear of a notch or home indicator. */
