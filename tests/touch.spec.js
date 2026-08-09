@@ -165,3 +165,53 @@ test('a swipe turns the snake as soon as it crosses the threshold, not on releas
   await client.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   await client.detach();
 });
+
+test('the d-pad turns the snake', async ({ page }) => {
+  await page.goto('/index.html');
+  const c = await stageCentre(page);
+  await tap(page, c);
+  await page.waitForFunction(() => window.G && window.G.state === 'play', null, { timeout: 5000 });
+
+  await page.locator('#dpad .up').tap();
+
+  const dir = await page.evaluate(() => {
+    const q = window.G.dirQ;
+    return q.length ? q[q.length - 1] : window.G.dir;
+  });
+  expect(dir).toEqual({ x: 0, y: -1 });
+});
+
+test('the action button starts a game', async ({ page }) => {
+  await page.goto('/index.html');
+  expect(await page.evaluate(() => window.G.state)).toBe('menu');
+
+  await page.locator('#btnAction').tap();
+
+  await page.waitForFunction(() => window.G.state !== 'menu', null, { timeout: 5000 });
+  expect(await page.evaluate(() => window.G.state)).not.toBe('menu');
+});
+
+test('pressing the d-pad does not also fire the tap action', async ({ page }) => {
+  // #touchpad sits inside #stage, which owns the swipe/tap touch listeners.
+  // Without a guard, a touch on the d-pad also starts a swipe gesture on
+  // #stage; on release (short, in-place) that reads as a tap and calls
+  // primary(). primary() resumes from 'paused'; pushDir does not. So: from
+  // paused, a d-pad press must NOT resume the game.
+  await page.goto('/index.html');
+  const c = await stageCentre(page);
+  await tap(page, c);
+  await page.waitForFunction(() => window.G && window.G.state === 'play', null, { timeout: 5000 });
+
+  await page.locator('#btnPause').tap();
+  expect(await page.evaluate(() => window.G.state)).toBe('paused');
+
+  await page.locator('#dpad .up').tap();
+
+  expect(await page.evaluate(() => window.G.state)).toBe('paused');
+});
+
+test('the on-screen controller is hidden on desktop', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto('/index.html');
+  await expect(page.locator('#touchpad')).toBeHidden();
+});

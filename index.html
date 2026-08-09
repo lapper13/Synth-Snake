@@ -196,6 +196,42 @@
   /* Keep the HUD and hint clear of a notch or home indicator. */
   #hud{padding-left:max(18px, env(safe-area-inset-left));
        padding-right:max(18px, env(safe-area-inset-right))}
+
+  /* ---------- on-screen controller (touch devices only) ---------- */
+  #touchpad{display:none}
+  @media (pointer: coarse) and (max-width: 900px),
+         (pointer: coarse) and (max-height: 700px){
+    #touchpad{
+      display:block;position:absolute;inset:0;
+      pointer-events:none;z-index:6;   /* above .overlay (z-index 5) */
+    }
+    #dpad{
+      position:absolute;left:10px;bottom:10px;
+      width:126px;height:126px;pointer-events:none;
+    }
+    #dpad .dp{
+      position:absolute;width:42px;height:42px;pointer-events:auto;
+      display:flex;align-items:center;justify-content:center;
+      border:1px solid rgba(255,255,255,.35);border-radius:9px;
+      background:rgba(10,4,26,.42);color:rgba(255,255,255,.85);
+      font-size:14px;line-height:1;padding:0;
+      -webkit-tap-highlight-color:transparent;touch-action:none;
+    }
+    #dpad .dp:active{background:rgba(124,247,255,.5);color:#04121A}
+    #dpad .up   {left:42px;top:0}
+    #dpad .left {left:0;top:42px}
+    #dpad .right{left:84px;top:42px}
+    #dpad .down {left:42px;top:84px}
+    #btnAction{
+      position:absolute;right:14px;bottom:22px;pointer-events:auto;
+      width:66px;height:66px;border-radius:50%;
+      border:1px solid rgba(255,255,255,.35);
+      background:rgba(10,4,26,.42);color:rgba(255,255,255,.85);
+      font-size:22px;line-height:1;padding:0;
+      -webkit-tap-highlight-color:transparent;touch-action:none;
+    }
+    #btnAction:active{background:rgba(124,247,255,.5);color:#04121A}
+  }
 </style>
 </head>
 <body>
@@ -219,10 +255,19 @@
       <canvas id="game"></canvas>
       <div id="scanlines"></div>
       <div class="overlay" id="overlay"></div>
+      <div id="touchpad">
+        <div id="dpad">
+          <button class="dp up"    data-dir="up"    type="button" aria-label="Up">&#9650;</button>
+          <button class="dp left"  data-dir="left"  type="button" aria-label="Left">&#9664;</button>
+          <button class="dp right" data-dir="right" type="button" aria-label="Right">&#9654;</button>
+          <button class="dp down"  data-dir="down"  type="button" aria-label="Down">&#9660;</button>
+        </div>
+        <button id="btnAction" type="button" aria-label="Start or confirm">&#9312;</button>
+      </div>
     </div>
     <aside id="sideBoard"></aside>
   </div>
-  <div id="controlsHint">D-PAD move · ① start / confirm · ② pause · ③ mute &nbsp;|&nbsp; keys: arrows / WASD · Enter · P pause · M mute · Esc title &nbsp;|&nbsp; touch: swipe to steer · tap to start</div>
+  <div id="controlsHint">D-PAD move · ① start / confirm · ② pause · ③ mute &nbsp;|&nbsp; keys: arrows / WASD · Enter · P pause · M mute · Esc title &nbsp;|&nbsp; touch: swipe or the on-screen pad to steer · tap or ① to start</div>
 
 <script>
 "use strict";
@@ -1372,6 +1417,7 @@ let touchStart = null;
 const stageEl = document.getElementById("stage");
 
 stageEl.addEventListener("touchstart", e => {
+  if(e.target.closest && e.target.closest("#touchpad")){ touchStart = null; return; }
   if(e.touches.length !== 1){ touchStart = null; return; }
   const t = e.touches[0];
   touchStart = { x:t.clientX, y:t.clientY, at:performance.now(), fired:false };
@@ -1400,6 +1446,22 @@ stageEl.addEventListener("touchend", e => {
 }, { passive:true });
 
 stageEl.addEventListener("touchcancel", () => { touchStart = null; }, { passive:true });
+
+/* ---------- on-screen D-pad + action button (touch devices only) ----------
+   #touchpad lives inside #stage, which owns the swipe/tap handlers above.
+   The touchstart guard (top of this block) stops a d-pad/action press from
+   also being read as a swipe gesture on #stage. */
+const DPAD_DIRS = { up:{x:0,y:-1}, down:{x:0,y:1}, left:{x:-1,y:0}, right:{x:1,y:0} };
+document.querySelectorAll("#dpad .dp").forEach(btn => {
+  btn.addEventListener("pointerdown", e => {
+    e.preventDefault(); e.stopPropagation();
+    pushDir(DPAD_DIRS[btn.dataset.dir]);
+  });
+});
+document.getElementById("btnAction").addEventListener("pointerdown", e => {
+  e.preventDefault(); e.stopPropagation();
+  primary();
+});
 
 document.getElementById("btnPause").addEventListener("click", () => togglePause());
 document.getElementById("btnMute").addEventListener("click", () => {
