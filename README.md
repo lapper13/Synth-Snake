@@ -12,7 +12,8 @@ Arrow keys or WASD to steer. Enter or Space to start and confirm. P pauses, M mu
 to the title screen. A 3-button USB gamepad with a d-pad also works.
 
 On a touch screen, swipe on the board to steer and tap to start or confirm. Pause and mute are
-the two buttons at the top right. Hold the device in landscape.
+the two buttons at the top right. Plays in portrait or landscape; in portrait the on-screen pad
+moves down to the bottom of the screen for one-handed play.
 
 ## Install it on a tablet
 
