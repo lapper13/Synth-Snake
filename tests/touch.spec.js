@@ -127,15 +127,6 @@ test('nothing is clipped in a narrow in-app browser window', async ({ page }) =>
   await expect(page.locator('canvas#game')).toBeVisible();
 });
 
-test('portrait shows a rotate prompt', async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto('/index.html');
-  await expect(page.locator('#rotate')).toBeVisible();
-
-  await page.setViewportSize({ width: 844, height: 390 });
-  await expect(page.locator('#rotate')).toBeHidden();
-});
-
 test('a swipe turns the snake as soon as it crosses the threshold, not on release', async ({ page }) => {
   // Regression test for the latency defect: direction must resolve on
   // touchmove once the swipe passes SWIPE_MIN_PX, not on touchend.
@@ -279,5 +270,56 @@ test('the pad toggle is hidden on desktop', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto('/index.html');
   await expect(page.locator('#btnPad')).toBeHidden();
+});
+
+test('the game is playable in portrait', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/index.html');
+
+  await expect(page.locator('canvas#game')).toBeVisible();
+  expect(await page.locator('#rotate').count()).toBe(0);
+
+  await page.locator('#btnAction').tap();
+  await page.waitForFunction(() => window.G.state !== 'menu', null, { timeout: 5000 });
+  expect(await page.evaluate(() => window.G.state)).not.toBe('menu');
+});
+
+test('the portrait controller does not overlap the board', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/index.html');
+  const vp = page.viewportSize();
+
+  const canvasBox = await page.locator('canvas#game').boundingBox();
+  const dpadBox = await page.locator('#dpad').boundingBox();
+  const actionBox = await page.locator('#btnAction').boundingBox();
+
+  expect(canvasBox).not.toBeNull();
+  expect(dpadBox).not.toBeNull();
+  expect(actionBox).not.toBeNull();
+
+  expect(rectsIntersect(canvasBox, dpadBox), 'dpad overlaps canvas').toBe(false);
+  expect(rectsIntersect(canvasBox, actionBox), 'btnAction overlaps canvas').toBe(false);
+
+  for (const [name, box] of [['canvas#game', canvasBox], ['#dpad', dpadBox], ['#btnAction', actionBox]]) {
+    expect(box.x, `${name} off the left`).toBeGreaterThanOrEqual(-1);
+    expect(box.y, `${name} off the top`).toBeGreaterThanOrEqual(-1);
+    expect(box.x + box.width, `${name} off the right`).toBeLessThanOrEqual(vp.width + 1);
+    expect(box.y + box.height, `${name} off the bottom`).toBeLessThanOrEqual(vp.height + 1);
+  }
+});
+
+test('nothing is clipped in portrait', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/index.html');
+  const vp = page.viewportSize();
+
+  for (const sel of ['#hud', '#stage', 'canvas#game', '#sideBoard']) {
+    const box = await page.locator(sel).boundingBox();
+    if (box === null) continue;          // hidden is fine, clipped is not
+    expect(box.x, `${sel} off the left`).toBeGreaterThanOrEqual(-1);
+    expect(box.y, `${sel} off the top`).toBeGreaterThanOrEqual(-1);
+    expect(box.x + box.width, `${sel} off the right`).toBeLessThanOrEqual(vp.width + 1);
+    expect(box.y + box.height, `${sel} off the bottom`).toBeLessThanOrEqual(vp.height + 1);
+  }
 });
 
